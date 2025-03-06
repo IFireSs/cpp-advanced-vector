@@ -13,8 +13,8 @@ public:
     RawMemory() = default;
 
     explicit RawMemory(const size_t capacity)
-        : buffer_(Allocate(capacity))
-        , capacity_(capacity) {
+            : buffer_(Allocate(capacity))
+            , capacity_(capacity) {
     }
 
     RawMemory(const RawMemory&) = delete;
@@ -91,23 +91,23 @@ public:
     Vector() = default;
 
     explicit Vector(size_t size)
-        : data_(size)
-        , size_(size)
+            : data_(size)
+            , size_(size)
     {
         std::uninitialized_value_construct_n(data_.GetAddress(), size);
     }
 
     Vector(const Vector& other)
-        : data_(other.size_)
-        , size_(other.size_)
+            : data_(other.size_)
+            , size_(other.size_)
     {
 
         std::uninitialized_copy_n(other.data_.GetAddress(), other.size_, data_.GetAddress());
     }
 
     Vector(Vector&& other) noexcept
-        : data_(std::move(other.data_))
-        , size_(std::exchange(other.size_, 0))
+            : data_(std::move(other.data_))
+            , size_(std::exchange(other.size_, 0))
     {
     }
 
@@ -200,12 +200,7 @@ public:
             return;
         }
         RawMemory<T> new_data(new_capacity);
-        if constexpr (std::is_nothrow_move_constructible_v<T> || !std::is_copy_constructible_v<T>) {
-            std::uninitialized_move_n(data_.GetAddress(), size_, new_data.GetAddress());
-        }
-        else {
-            std::uninitialized_copy_n(data_.GetAddress(), size_, new_data.GetAddress());
-        }
+        NoThrowOrNoCopyCtor(data_.GetAddress(), new_data.GetAddress(), size_);
         std::destroy_n(data_.GetAddress(), size_);
         data_.Swap(new_data);
     }
@@ -254,17 +249,9 @@ public:
         else {
             RawMemory<T> new_data(size_ == 0 ? 1 : size_ * 2);
             std::construct_at(new_data.GetAddress() + pos_from_begin, std::forward<Args>(args)...);
-            if constexpr (std::is_nothrow_move_constructible_v<T> || !std::is_copy_constructible_v<T>) {
-                std::uninitialized_move_n(begin(), pos_from_begin, new_data.GetAddress());
-                if (pos!=end()) {
-                    std::uninitialized_move_n(begin() + pos_from_begin, size_ - pos_from_begin, new_data.GetAddress() + pos_from_begin + 1);
-                }
-            }
-            else {
-                std::uninitialized_copy_n(begin(), pos_from_begin, new_data.GetAddress());
-                if (pos != end()) {
-                    std::uninitialized_copy_n(begin() + pos_from_begin, size_ - pos_from_begin, new_data.GetAddress() + pos_from_begin + 1);
-                }
+            NoThrowOrNoCopyCtor(begin(), new_data.GetAddress(), pos_from_begin);
+            if (pos!=end()) {
+                NoThrowOrNoCopyCtor(begin() + pos_from_begin, new_data.GetAddress() + pos_from_begin + 1, size_ - pos_from_begin);
             }
             std::destroy_n(begin(), size_);
             data_.Swap(new_data);
@@ -289,4 +276,13 @@ public:
 private:
     RawMemory<T> data_;
     size_t size_ = 0;
+
+    void NoThrowOrNoCopyCtor(T* from, T* to, const size_t& count){
+        if constexpr (std::is_nothrow_move_constructible_v<T> || !std::is_copy_constructible_v<T>) {
+            std::uninitialized_move_n(from, count, to);
+        }
+        else {
+            std::uninitialized_copy_n(from, count, to);
+        }
+    }
 };
